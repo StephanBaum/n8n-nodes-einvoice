@@ -11,6 +11,41 @@ import { PDFDocument } from 'pdf-lib';
 
 import { DOCUMENT_TYPES } from '../types/documentTypes';
 import { EInvoice, PostalAddress, TaxRegistration } from '../types/eInvoice';
+import { LoggerProxy as logger } from 'n8n-workflow';
+
+export type InvoiceProfile =
+  | 'minimum'
+  | 'basicwl'
+  | 'basic'
+  | 'en16931'
+  | 'extended'
+  | 'zugferd-21'
+  | 'xrechnung';
+
+const PROFILE_MAP: Record<string, InvoiceProfile> = {
+  'urn:factur-x.eu:1p0:minimum': 'minimum',
+  'urn:factur-x.eu:1p0:basicwl': 'basicwl',
+  'urn:factur-x.eu:1p0:basic': 'basic',
+  'urn:cen.eu:en16931:2017:compliant:factur-x.eu:1p0:basic': 'basic',
+  'urn:cen.eu:en16931:2017#conformant#urn:factur-x.eu:1p0:basic': 'basic',
+  'urn:cen.eu:en16931:2017': 'en16931',
+  'urn:factur-x.eu:1p0:extended': 'extended',
+  'urn:cen.eu:en16931:2017:compliant:factur-x.eu:1p0:extended': 'extended',
+  'urn:cen.eu:en16931:2017#conformant#urn:factur-x.eu:1p0:extended': 'extended',
+  'urn:zugferd.de:2p1': 'zugferd-21',
+  'urn:factur-x.eu:2p1:minimum': 'zugferd-21',
+  'urn:xoev-de:kosit:standard:xrechnung_2p3': 'xrechnung',
+  'urn:cen.eu:en16931:2017#compliant#xrechnung': 'xrechnung',
+};
+
+export function resolveProfileId(urn: string): InvoiceProfile {
+  const profile = PROFILE_MAP[urn];
+  if (!profile) {
+    logger.warn(`Unknown invoice profile: ${urn}`);
+    return 'en16931';
+  }
+  return profile;
+}
 
 const FACTUR_X_FILENAMES = ["factur-x.xml", "factur\\055x\\056xml", "zugferd-invoice.xml", "zugferd\\055invoice\\056xml", "ZUGFeRD-invoice.xml", "ZUGFeRD\\055invoice\\056xml", "xrechnung.xml", "xrechnung\\056xml"].map(
     (name) => stringToPDFString(name),
@@ -111,6 +146,8 @@ export function generateXRechnungXML(data: EInvoice): string {
       .replace(/'/g, '&apos;');
   };
 
+  const fmt = (n: number) => n.toFixed(2);
+
   const noteXml = (data.notes || [])
     .map(
       (n) =>
@@ -161,19 +198,19 @@ export function generateXRechnungXML(data: EInvoice): string {
           ${p.description ? `<ram:Description>${escape(p.description)}</ram:Description>` : ''}
         </ram:SpecifiedTradeProduct>
         <ram:SpecifiedLineTradeDelivery>
-          <ram:BilledQuantity unitCode="${escape(p.unitCode)}">${escape(p.quantity)}</ram:BilledQuantity>
+          <ram:BilledQuantity unitCode="${escape(p.unitCode)}">${fmt(p.quantity)}</ram:BilledQuantity>
         </ram:SpecifiedLineTradeDelivery>
         <ram:SpecifiedLineTradeAgreement>
           <ram:NetPriceProductTradePrice>
-            <ram:ChargeAmount>${escape(p.netItemPrice)}</ram:ChargeAmount>
+            <ram:ChargeAmount>${fmt(p.netItemPrice)}</ram:ChargeAmount>
           </ram:NetPriceProductTradePrice>
           <ram:GrossPriceProductTradePrice>
-            <ram:ChargeAmount>${escape(p.grossItemPrice)}</ram:ChargeAmount>
+            <ram:ChargeAmount>${fmt(p.grossItemPrice)}</ram:ChargeAmount>
           </ram:GrossPriceProductTradePrice>
         </ram:SpecifiedLineTradeAgreement>
         <ram:SpecifiedLineTradeSettlement>
           <ram:SpecifiedTradeSettlementLineMonetarySummation>
-            <ram:LineTotalAmount>${escape(p.total)}</ram:LineTotalAmount>
+            <ram:LineTotalAmount>${fmt(p.total)}</ram:LineTotalAmount>
           </ram:SpecifiedTradeSettlementLineMonetarySummation>
         </ram:SpecifiedLineTradeSettlement>
       </ram:IncludedSupplyChainTradeLineItem>`,
@@ -183,9 +220,9 @@ export function generateXRechnungXML(data: EInvoice): string {
   const taxes = (data.transaction.taxes || [])
     .map(
       (t) => `<ram:ApplicableTradeTax>
-        <ram:CalculatedAmount>${escape(t.taxAmount)}</ram:CalculatedAmount>
+        <ram:CalculatedAmount>${fmt(t.taxAmount)}</ram:CalculatedAmount>
         <ram:TypeCode>${escape(t.taxType)}</ram:TypeCode>
-        <ram:BasisAmount>${escape(t.totalNet)}</ram:BasisAmount>
+        <ram:BasisAmount>${fmt(t.totalNet)}</ram:BasisAmount>
         <ram:CategoryCode>S</ram:CategoryCode>
         <ram:RateApplicablePercent>${escape(t.taxPercent)}</ram:RateApplicablePercent>
       </ram:ApplicableTradeTax>`,
@@ -210,6 +247,7 @@ export function generateXRechnungXML(data: EInvoice): string {
     </ram:IssueDateTime>
     ${noteXml}
     ${data.buyerReference ? `<ram:BuyerReference>${escape(data.buyerReference)}</ram:BuyerReference>` : ''}
+    ${data.leitwegId ? `<ram:BuyerAssignedAccountID>${escape(data.leitwegId)}</ram:BuyerAssignedAccountID>` : ''}
   </rsm:ExchangedDocument>
   <rsm:SupplyChainTradeTransaction>
     <ram:ApplicableHeaderTradeAgreement>
@@ -221,12 +259,12 @@ export function generateXRechnungXML(data: EInvoice): string {
       <ram:InvoiceCurrencyCode>${escape(data.transaction.currency)}</ram:InvoiceCurrencyCode>
       ${taxes}
       <ram:SpecifiedTradeSettlementHeaderMonetarySummation>
-        <ram:LineTotalAmount>${escape(data.transaction.totalNet)}</ram:LineTotalAmount>
-        <ram:TaxBasisTotalAmount>${escape(data.transaction.totalNet)}</ram:TaxBasisTotalAmount>
-        <ram:TaxTotalAmount>${escape(data.transaction.totalVat)}</ram:TaxTotalAmount>
-        <ram:GrandTotalAmount>${escape(data.transaction.totalGross)}</ram:GrandTotalAmount>
-        <ram:TotalPrepaidAmount>${escape(data.transaction.totalPrepaid)}</ram:TotalPrepaidAmount>
-        <ram:DuePayableAmount>${escape(data.transaction.totalPayable)}</ram:DuePayableAmount>
+        <ram:LineTotalAmount>${fmt(data.transaction.totalNet)}</ram:LineTotalAmount>
+        <ram:TaxBasisTotalAmount>${fmt(data.transaction.totalNet)}</ram:TaxBasisTotalAmount>
+        <ram:TaxTotalAmount>${fmt(data.transaction.totalVat)}</ram:TaxTotalAmount>
+        <ram:GrandTotalAmount>${fmt(data.transaction.totalGross)}</ram:GrandTotalAmount>
+        <ram:TotalPrepaidAmount>${fmt(data.transaction.totalPrepaid)}</ram:TotalPrepaidAmount>
+        <ram:DuePayableAmount>${fmt(data.transaction.totalPayable)}</ram:DuePayableAmount>
       </ram:SpecifiedTradeSettlementHeaderMonetarySummation>
     </ram:ApplicableHeaderTradeSettlement>
     ${lineItems}
@@ -257,6 +295,14 @@ export async function attachXmlToPDF(
   const pdfBytes = await pdfDoc.save();
 
   return this.helpers.prepareBinaryData(Buffer.from(pdfBytes), binaryData.fileName || 'document.pdf', 'application/pdf');
+}
+
+export async function createPdfStub(xml: string, xmlFilename: string): Promise<Buffer> {
+  const pdfDoc = await PDFDocument.create();
+  pdfDoc.addPage();
+  pdfDoc.attach(xml, xmlFilename, { mimeType: 'application/xml' });
+  const pdfBytes = await pdfDoc.save();
+  return Buffer.from(pdfBytes);
 }
 
 /*
@@ -291,34 +337,10 @@ async function parseEInvoiceXML(xml: string, mode: 'json' | 'simple') {
     }
 
     const profileId = json.CrossIndustryInvoice?.ExchangedDocumentContext?.GuidelineSpecifiedDocumentContextParameter?.ID;
-    var profile = "";
     if (!profileId) {
         throw new Error("missing profile identifier");
-      }
-  
-      switch (profileId) {
-        case "urn:factur-x.eu:1p0:minimum":
-          profile = "minimum";
-          break;
-        case "urn:factur-x.eu:1p0:basicwl":
-          profile = "basicwl";
-          break;
-        case "urn:factur-x.eu:1p0:basic":
-        case "urn:cen.eu:en16931:2017:compliant:factur-x.eu:1p0:basic":
-        case "urn:cen.eu:en16931:2017#conformant#urn:factur-x.eu:1p0:basic":
-          profile = "basic";
-          break;
-        case "urn:cen.eu:en16931:2017":
-          profile = "en16931";
-          break;
-        case "urn:factur-x.eu:1p0:extended":
-        case "urn:cen.eu:en16931:2017:compliant:factur-x.eu:1p0:extended":
-        case "urn:cen.eu:en16931:2017#conformant#urn:factur-x.eu:1p0:extended":
-          profile = "extended";
-          break;
-        default:
-          throw new Error(`unknown profile: ${profileId}`);
-      }
+    }
+    const profile = resolveProfileId(profileId);
 
   // otherwise we simplify the response
   const simplified = {} as EInvoice;
@@ -338,6 +360,8 @@ async function parseEInvoiceXML(xml: string, mode: 'json' | 'simple') {
       text: ci.ExchangedDocument.IncludedNote.Content,
       code: ci.ExchangedDocument.IncludedNote.SubjectCode
   }] : [];
+  simplified.buyerReference = ci.ExchangedDocument?.BuyerReference || null;
+  simplified.leitwegId = ci.ExchangedDocument?.BuyerAssignedAccountID || null;
 
   // Trade parties
   const agreement = ci.SupplyChainTradeTransaction?.ApplicableHeaderTradeAgreement;

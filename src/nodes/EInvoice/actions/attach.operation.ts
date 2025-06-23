@@ -1,7 +1,7 @@
-import type { IExecuteFunctions, INodeExecutionData, INodeProperties } from 'n8n-workflow';
+import type { IExecuteFunctions, INodeExecutionData, INodeProperties, IBinaryData } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
-import { generateXRechnungXML, attachXmlToPDF } from '../utils/einvoice';
+import { generateXRechnungXML, createPdfStub } from '../utils/einvoice';
 
 export const properties: INodeProperties[] = [
     {
@@ -18,6 +18,12 @@ export const properties: INodeProperties[] = [
         type: 'string',
         default: 'xrechnung.xml',
     },
+    {
+        displayName: 'Attach PDF layer',
+        name: 'attachPdf',
+        type: 'boolean',
+        default: false,
+    },
 ];
 
 export const description = properties;
@@ -28,10 +34,17 @@ export async function execute(this: IExecuteFunctions, items: INodeExecutionData
         try {
             const binaryPropertyName = this.getNodeParameter('binaryPropertyName', index) as string;
             const filename = this.getNodeParameter('filename', index) as string;
-            const invoiceData = items[index].json as any;
+            const attachPdf = this.getNodeParameter('attachPdf', index) as boolean;
+            const invoiceData = items[index]!.json as any;
 
             const xml = generateXRechnungXML(invoiceData as any);
-            const binary = await attachXmlToPDF.call(this, binaryPropertyName, xml, filename, index);
+            let binary: IBinaryData;
+            if (attachPdf) {
+                const buffer = await createPdfStub(xml, filename);
+                binary = await this.helpers.prepareBinaryData(buffer, filename.replace(/\.xml$/, '.pdf'), 'application/pdf');
+            } else {
+                binary = await this.helpers.prepareBinaryData(Buffer.from(xml), filename, 'application/xml');
+            }
 
             returnData.push({
                 json: invoiceData,
