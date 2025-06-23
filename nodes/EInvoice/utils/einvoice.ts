@@ -7,9 +7,10 @@ import { getDocument as readPDF } from 'pdfjs-dist';
 import { DocumentInitParameters } from 'pdfjs-dist/types/src/display/api';
 
 import { Parser } from 'xml2js';
+import { PDFDocument } from 'pdf-lib';
 
 import { DOCUMENT_TYPES } from '../types/documentTypes';
-import { EInvoice } from '../types/eInvoice';
+import { EInvoice, PostalAddress, TaxRegistration } from '../types/eInvoice';
 
 const FACTUR_X_FILENAMES = ["factur-x.xml", "factur\\055x\\056xml", "zugferd-invoice.xml", "zugferd\\055invoice\\056xml", "ZUGFeRD-invoice.xml", "ZUGFeRD\\055invoice\\056xml", "xrechnung.xml", "xrechnung\\056xml"].map(
     (name) => stringToPDFString(name),
@@ -96,7 +97,166 @@ export async function extractEInvoiceFromXML(
         };
     }
 
-    return parseEInvoiceXML(data, mode);
+  return parseEInvoiceXML(data, mode);
+}
+
+export function generateXRechnungXML(data: EInvoice): string {
+  const escape = (value: string | number | null | undefined): string => {
+    if (value === null || value === undefined) return '';
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+  };
+
+  const noteXml = (data.notes || [])
+    .map(
+      (n) =>
+        `<ram:IncludedNote><ram:Content>${escape(n.text)}</ram:Content>${n.code ? `<ram:SubjectCode>${escape(n.code)}</ram:SubjectCode>` : ''}</ram:IncludedNote>`,
+    )
+    .join('');
+
+  const postal = (addr: PostalAddress) => `
+      ${addr.address[0] ? `<ram:LineOne>${escape(addr.address[0])}</ram:LineOne>` : ''}
+      ${addr.address[1] ? `<ram:LineTwo>${escape(addr.address[1])}</ram:LineTwo>` : ''}
+      ${addr.address[2] ? `<ram:LineThree>${escape(addr.address[2])}</ram:LineThree>` : ''}
+      ${addr.postCode ? `<ram:PostcodeCode>${escape(addr.postCode)}</ram:PostcodeCode>` : ''}
+      ${addr.city ? `<ram:CityName>${escape(addr.city)}</ram:CityName>` : ''}
+      <ram:CountryID>${escape(addr.countryCode)}</ram:CountryID>
+      ${addr.countrySubdivision ? `<ram:CountrySubDivisionName>${escape(addr.countrySubdivision)}</ram:CountrySubDivisionName>` : ''}`;
+
+  const taxRegs = (regs: TaxRegistration[]) =>
+    regs
+      .map(
+        (r) =>
+          `<ram:SpecifiedTaxRegistration><ram:ID schemeID="${escape(r.type)}">${escape(r.value)}</ram:ID></ram:SpecifiedTaxRegistration>`,
+      )
+      .join('');
+
+  const sellerXml = `<ram:SellerTradeParty>
+      ${data.seller.sellerId ? `<ram:ID>${escape(data.seller.sellerId)}</ram:ID>` : ''}
+      <ram:Name>${escape(data.seller.sellerName)}</ram:Name>
+      <ram:PostalTradeAddress>${postal(data.seller.postalAddress)}</ram:PostalTradeAddress>
+      ${taxRegs(data.seller.taxRegistrations)}
+    </ram:SellerTradeParty>`;
+
+  const buyerXml = `<ram:BuyerTradeParty>
+      ${data.buyer.buyerId ? `<ram:ID>${escape(data.buyer.buyerId)}</ram:ID>` : ''}
+      <ram:Name>${escape(data.buyer.buyerName)}</ram:Name>
+      <ram:PostalTradeAddress>${postal(data.buyer.postalAddress)}</ram:PostalTradeAddress>
+      ${taxRegs(data.buyer.taxRegistrations)}
+    </ram:BuyerTradeParty>`;
+
+  const lineItems = (data.transaction.positions || [])
+    .map(
+      (p) => `<ram:IncludedSupplyChainTradeLineItem>
+        <ram:AssociatedDocumentLineDocument>
+          <ram:LineID>${escape(p.lineId)}</ram:LineID>
+        </ram:AssociatedDocumentLineDocument>
+        <ram:SpecifiedTradeProduct>
+          ${p.gtin ? `<ram:GlobalID>${escape(p.gtin)}</ram:GlobalID>` : ''}
+          <ram:Name>${escape(p.name)}</ram:Name>
+          ${p.description ? `<ram:Description>${escape(p.description)}</ram:Description>` : ''}
+        </ram:SpecifiedTradeProduct>
+        <ram:SpecifiedLineTradeDelivery>
+          <ram:BilledQuantity unitCode="${escape(p.unitCode)}">${escape(p.quantity)}</ram:BilledQuantity>
+        </ram:SpecifiedLineTradeDelivery>
+        <ram:SpecifiedLineTradeAgreement>
+          <ram:NetPriceProductTradePrice>
+            <ram:ChargeAmount>${escape(p.netItemPrice)}</ram:ChargeAmount>
+          </ram:NetPriceProductTradePrice>
+          <ram:GrossPriceProductTradePrice>
+            <ram:ChargeAmount>${escape(p.grossItemPrice)}</ram:ChargeAmount>
+          </ram:GrossPriceProductTradePrice>
+        </ram:SpecifiedLineTradeAgreement>
+        <ram:SpecifiedLineTradeSettlement>
+          <ram:SpecifiedTradeSettlementLineMonetarySummation>
+            <ram:LineTotalAmount>${escape(p.total)}</ram:LineTotalAmount>
+          </ram:SpecifiedTradeSettlementLineMonetarySummation>
+        </ram:SpecifiedLineTradeSettlement>
+      </ram:IncludedSupplyChainTradeLineItem>`,
+    )
+    .join('');
+
+  const taxes = (data.transaction.taxes || [])
+    .map(
+      (t) => `<ram:ApplicableTradeTax>
+        <ram:CalculatedAmount>${escape(t.taxAmount)}</ram:CalculatedAmount>
+        <ram:TypeCode>${escape(t.taxType)}</ram:TypeCode>
+        <ram:BasisAmount>${escape(t.totalNet)}</ram:BasisAmount>
+        <ram:CategoryCode>S</ram:CategoryCode>
+        <ram:RateApplicablePercent>${escape(t.taxPercent)}</ram:RateApplicablePercent>
+      </ram:ApplicableTradeTax>`,
+    )
+    .join('');
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<rsm:CrossIndustryInvoice xmlns:rsm="urn:factur-x:pdfa:CrossIndustryInvoice:invoice:1p0" xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100" xmlns:udt="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100">
+  <rsm:ExchangedDocumentContext>
+    <ram:BusinessProcessSpecifiedDocumentContextParameter>
+      <ram:ID>${escape(data.meta.businessProcessType)}</ram:ID>
+    </ram:BusinessProcessSpecifiedDocumentContextParameter>
+    <ram:GuidelineSpecifiedDocumentContextParameter>
+      <ram:ID>${escape(data.meta.specificationProfile)}</ram:ID>
+    </ram:GuidelineSpecifiedDocumentContextParameter>
+  </rsm:ExchangedDocumentContext>
+  <rsm:ExchangedDocument>
+    <ram:ID>${escape(data.documentId)}</ram:ID>
+    <ram:TypeCode>${escape(data.documentType)}</ram:TypeCode>
+    <ram:IssueDateTime>
+      <udt:DateTimeString format="102">${escape(data.documentDate)}</udt:DateTimeString>
+    </ram:IssueDateTime>
+    ${noteXml}
+    ${data.buyerReference ? `<ram:BuyerReference>${escape(data.buyerReference)}</ram:BuyerReference>` : ''}
+  </rsm:ExchangedDocument>
+  <rsm:SupplyChainTradeTransaction>
+    <ram:ApplicableHeaderTradeAgreement>
+      ${sellerXml}
+      ${buyerXml}
+    </ram:ApplicableHeaderTradeAgreement>
+    <ram:ApplicableHeaderTradeDelivery/>
+    <ram:ApplicableHeaderTradeSettlement>
+      <ram:InvoiceCurrencyCode>${escape(data.transaction.currency)}</ram:InvoiceCurrencyCode>
+      ${taxes}
+      <ram:SpecifiedTradeSettlementHeaderMonetarySummation>
+        <ram:LineTotalAmount>${escape(data.transaction.totalNet)}</ram:LineTotalAmount>
+        <ram:TaxBasisTotalAmount>${escape(data.transaction.totalNet)}</ram:TaxBasisTotalAmount>
+        <ram:TaxTotalAmount>${escape(data.transaction.totalVat)}</ram:TaxTotalAmount>
+        <ram:GrandTotalAmount>${escape(data.transaction.totalGross)}</ram:GrandTotalAmount>
+        <ram:TotalPrepaidAmount>${escape(data.transaction.totalPrepaid)}</ram:TotalPrepaidAmount>
+        <ram:DuePayableAmount>${escape(data.transaction.totalPayable)}</ram:DuePayableAmount>
+      </ram:SpecifiedTradeSettlementHeaderMonetarySummation>
+    </ram:ApplicableHeaderTradeSettlement>
+    ${lineItems}
+  </rsm:SupplyChainTradeTransaction>
+</rsm:CrossIndustryInvoice>`;
+
+  return xml;
+}
+
+export async function attachXmlToPDF(
+  this: IExecuteFunctions,
+  binaryPropertyName: string,
+  xml: string,
+  xmlFilename: string,
+  itemIndex = 0,
+) {
+  const binaryData = this.helpers.assertBinaryData(itemIndex, binaryPropertyName);
+
+  let buffer: Buffer;
+  if (binaryData.id) {
+    buffer = await this.helpers.binaryToBuffer(await this.helpers.getBinaryStream(binaryData.id));
+  } else {
+    buffer = Buffer.from(binaryData.data, BINARY_ENCODING);
+  }
+
+  const pdfDoc = await PDFDocument.load(buffer);
+  pdfDoc.attach(xml, xmlFilename, { mimeType: 'application/xml' });
+  const pdfBytes = await pdfDoc.save();
+
+  return this.helpers.prepareBinaryData(Buffer.from(pdfBytes), binaryData.fileName || 'document.pdf', 'application/pdf');
 }
 
 /*

@@ -57,10 +57,11 @@
     "prettier": "^3.3.2",
     "typescript": "^5.5.3"
   },
-  "dependencies": {
-    "lodash": "^4.17.21",
-    "pdfjs-dist": "^2.16.105",
-    "xml2js": "^0.6.2",
-    "n8n-workflow": "^1.72.0"
-  }
+    "dependencies": {
+      "lodash": "^4.17.21",
+      "pdfjs-dist": "^2.16.105",
+      "pdf-lib": "^1.17.1",
+      "xml2js": "^0.6.2",
+      "n8n-workflow": "^1.72.0"
+    }
 }

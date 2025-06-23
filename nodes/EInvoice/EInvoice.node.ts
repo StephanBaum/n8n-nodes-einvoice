@@ -7,6 +7,7 @@ import type {
 import { NodeConnectionType } from 'n8n-workflow';
 
 import * as extraction from './actions/exctraction.operation';
+import * as attach from './actions/attach.operation';
 
 export class EInvoice implements INodeType {
 	description: INodeTypeDescription = {
@@ -20,8 +21,8 @@ export class EInvoice implements INodeType {
 		defaults: {
 			name: 'E-Invoice',
 		},
-		inputs: [NodeConnectionType.Main],
-		outputs: [NodeConnectionType.Main],
+                inputs: ['main'],
+                outputs: ['main'],
 		properties: [
 			{
 				displayName: 'Resource',
@@ -51,19 +52,26 @@ export class EInvoice implements INodeType {
 				type: 'options',
 				noDataExpression: true,
 				// eslint-disable-next-line n8n-nodes-base/node-param-options-type-unsorted-items
-				options: [
-					{
-						name: 'Extract Invoice Data',
-						value: 'extraction',
-						action: 'Extract invoice data',
-						description: 'Extracts the invoice data from a PDF or XML file',
-					},
-				],
-				default: 'extraction',
-			},
-			...extraction.description,
-		],
-	};
+                                options: [
+                                        {
+                                                name: 'Extract Invoice Data',
+                                                value: 'extraction',
+                                                action: 'Extract invoice data',
+                                                description: 'Extracts the invoice data from a PDF or XML file',
+                                        },
+                                        {
+                                                name: 'Attach Invoice XML',
+                                                value: 'attach',
+                                                action: 'Attach invoice xml',
+                                                description: 'Generate XRechnung XML and attach to a PDF file',
+                                        },
+                                ],
+                                default: 'extraction',
+                        },
+                        ...extraction.description,
+                        ...attach.description,
+                ],
+        };
 
 	// The function below is responsible for actually doing whatever this node
 	// is supposed to do. In this case, we're just appending the `myString` property
@@ -75,12 +83,16 @@ export class EInvoice implements INodeType {
 		const resource = this.getNodeParameter('resource', 0);
 		let returnData: INodeExecutionData[] = [];
 
-		// Using dynamic import for PDF.js
-		if (operation === 'extraction') {
-			if (resource === 'pdf' || resource === 'xml') {
-				returnData = await extraction.execute.call(this, items);
-			}
-		}
+                // Using dynamic import for PDF.js
+                if (operation === 'extraction') {
+                        if (resource === 'pdf' || resource === 'xml') {
+                                returnData = await extraction.execute.call(this, items);
+                        }
+                } else if (operation === 'attach') {
+                        if (resource === 'pdf') {
+                                returnData = await attach.execute.call(this, items);
+                        }
+                }
 
 		return [returnData];
 	}
