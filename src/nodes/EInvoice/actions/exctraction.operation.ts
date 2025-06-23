@@ -89,7 +89,7 @@ export async function execute(this: IExecuteFunctions, items: INodeExecutionData
 
 	for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
 		try {
-			const item = items[itemIndex];
+                        const item = items[itemIndex]!;
 			const options = this.getNodeParameter('options', itemIndex);
 			const binaryPropertyName = this.getNodeParameter('binaryPropertyName', itemIndex);
 			const resource = this.getNodeParameter('resource', itemIndex);
@@ -126,14 +126,14 @@ export async function execute(this: IExecuteFunctions, items: INodeExecutionData
 				newItem.json = json;
 			}
 
-			if (options.keepSource === 'binary' || options.keepSource === 'both') {
-				newItem.binary = item.binary;
-			} else {
-				// this binary data would not be included, but there also might be other binary data
-				// which should be included, copy it over and unset current binary data
-				newItem.binary = deepCopy(item.binary);
-				unset(newItem.binary, binaryPropertyName);
-			}
+                        if (options.keepSource === 'binary' || options.keepSource === 'both') {
+                                newItem.binary = item.binary!;
+                        } else {
+                                // this binary data would not be included, but there also might be other binary data
+                                // which should be included, copy it over and unset current binary data
+                                newItem.binary = deepCopy(item.binary!);
+                                unset(newItem.binary, binaryPropertyName);
+                        }
 
 			returnData.push(newItem);
 		} catch (error) {

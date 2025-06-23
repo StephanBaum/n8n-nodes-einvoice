@@ -58,6 +58,7 @@ export interface EInvoice {
     documentDate: string;
     notes: Note[];
     buyerReference: string | null;
+    leitwegId?: string | null;
     seller: {
         sellerId: string | null;
         sellerName: string;

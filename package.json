@@ -1,5 +1,6 @@
 {
   "name": "n8n-nodes-einvoice",
+  "type": "module",
   "version": "0.1.1",
   "description": "n8n.io node to handle E-Invoices with PDF or XML Files (ZUGFeRD / XRechnung / Factur-X / EN-16931)",
   "keywords": [
@@ -32,10 +33,10 @@
   "scripts": {
     "build": "tsc && gulp build:icons",
     "dev": "tsc --watch",
-    "format": "prettier nodes --write",
-    "lint": "eslint nodes package.json",
-    "lintfix": "eslint nodes package.json --fix",
-    "prepublishOnly": "pnpm build && pnpm lint -c .eslintrc.prepublish.js nodes package.json"
+    "format": "prettier src --write",
+    "lint": "eslint src package.json",
+    "lintfix": "eslint src package.json --fix",
+    "prepublishOnly": "pnpm build && pnpm lint -c .eslintrc.prepublish.js src package.json"
   },
   "files": [
     "dist"

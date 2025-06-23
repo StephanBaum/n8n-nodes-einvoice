@@ -4,10 +4,10 @@ import type {
 	INodeType,
 	INodeTypeDescription,
 } from 'n8n-workflow';
-import { NodeConnectionType } from 'n8n-workflow';
 
 import * as extraction from './actions/exctraction.operation';
 import * as attach from './actions/attach.operation';
+import type { NodeConnectionType } from 'n8n-workflow';
 
 export class EInvoice implements INodeType {
 	description: INodeTypeDescription = {
@@ -21,8 +21,8 @@ export class EInvoice implements INodeType {
 		defaults: {
 			name: 'E-Invoice',
 		},
-                inputs: ['main'],
-                outputs: ['main'],
+                inputs: ['main'] as unknown as NodeConnectionType[],
+                outputs: ['main'] as unknown as NodeConnectionType[],
 		properties: [
 			{
 				displayName: 'Resource',
