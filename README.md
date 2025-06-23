@@ -8,6 +8,7 @@ What you get:
 * Extract Invoice Informations from valid E-Invoices via PDFs or XML-Files (Standards: ZUGFeRD / XRechnung / Factur-X / EN-16931)
 * Option to get the raw XML as JSON
 * Option to get the raw XML embedded in the PDFs
+* Attach XRechnung-compliant XML invoices to PDF files
 
 [n8n](https://n8n.io/) is a [fair-code licensed](https://docs.n8n.io/reference/license/) workflow automation platform.
 
@@ -22,7 +23,7 @@ What you get:
 | Operation  | Description | Options |
 | ------------- |  ------------- |  ------------- | 
 | Extract  | Extract e-Invoice Informations from a PDF or XML-File | PDF password, return raw JSON, return raw XML, keep Source |
-| _Attach (planed)_  | Attach valid E-Invoice Informations to a PDF-File or generate a valid e-Invoice XML-File | - |
+| Attach  | Generate XRechnung XML from item data and attach it to a PDF file | XML filename |
 
 
 ## Installation
